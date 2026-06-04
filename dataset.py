@@ -1,40 +1,58 @@
-# Handing the downloading and loading ImageNet Datasets
+"""Optional Hugging Face streaming helpers for ImageNet-V2.
 
-import os
-import torch
-from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
+The notebook is self-contained, but this file lets you test streaming outside
+Jupyter without storing raw ImageNet-V2 images in the project.
+"""
 
-def get_imagenet_v2_loaders(data_dir="./data", batch_size=32):
-    """ Setting up data pipeline for ImageNet-V2"""
+HF_DATASET = "vaishaal/ImageNetV2"
 
-    """Standered normalization transformation for ImageNet-trained models"""
+VARIANT_FOLDERS = {
+    "matched-frequency": "imagenetv2-matched-frequency-format-val",
+    "threshold-0.7": "imagenetv2-threshold0.7-format-val",
+    "top-images": "imagenetv2-top-images-format-val",
+}
 
-    transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean = [0.485, 0.456, 0.406],
-            std = [0.229, 0.224, 0.225]
-        )
-    ])
-
-    if os.path.exists(data_dir) or os.path.exists(os.path.join(data_dir, "test")):
-        print(f"Loading ImageNet-V2 data from: {data_dir}")
-        test_dataset = datasets.ImageFolder(
-            root=os.path.join(data_dir, "test"),
-            transform=transforms
-        )
+VARIANT_URLS = {
+    "matched-frequency": "https://huggingface.co/datasets/vaishaal/ImageNetV2/resolve/main/imagenetv2-matched-frequency.tar.gz",
+    "threshold-0.7": "https://huggingface.co/datasets/vaishaal/ImageNetV2/resolve/main/imagenetv2-threshold0.7.tar.gz",
+    "top-images": "https://huggingface.co/datasets/vaishaal/ImageNetV2/resolve/main/imagenetv2-top-images.tar.gz",
+}
 
 
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=2,
-        pin_memory=True if torch.cuda.is_available() else False
+def label_from_key(key: str) -> int:
+    """Extract the numeric ImageNet class ID from a streamed archive key."""
+    return int(key.split("/")[1])
 
+
+def stream_imagenet_v2_rows(variant: str, max_samples: int | None = None):
+    """Yield streamed ImageNet-V2 rows as image/label/key dictionaries."""
+    from datasets import load_dataset
+
+    if variant not in VARIANT_FOLDERS:
+        choices = ", ".join(VARIANT_FOLDERS)
+        raise ValueError(f"Unknown variant '{variant}'. Choose one of: {choices}")
+
+    stream = load_dataset(
+        "webdataset",
+        data_files={"train": VARIANT_URLS[variant]},
+        split="train",
+        streaming=True,
     )
 
-    return test_loader
+    emitted = 0
+    for row in stream:
+        yield {
+            "image": row["jpeg"].convert("RGB"),
+            "label": label_from_key(row["__key__"]),
+            "key": row["__key__"],
+        }
+        emitted += 1
+        if max_samples is not None and emitted >= max_samples:
+            break
+
+
+if __name__ == "__main__":
+    for variant in VARIANT_FOLDERS:
+        print(f"{variant}:")
+        for row in stream_imagenet_v2_rows(variant, max_samples=2):
+            print(" ", row["label"], row["key"])
