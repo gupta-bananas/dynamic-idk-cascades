@@ -16,7 +16,7 @@ It does not require `data/imagenetv2` or any raw dataset folder in this repo.
 Install the needed packages in your venv if they are missing:
 
 ```bash
-pip install datasets torch torchvision timm scikit-learn numpy pillow matplotlib
+pip install datasets torch torchvision timm scikit-learn numpy pillow
 ```
 
 ## How to work
